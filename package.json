@@ -9,7 +9,11 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "dotenv": "^18.0.8",
     "next": "16.4.1",
+    "pg": "^8.23.1",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
@@ -19,6 +23,15 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.1",
+    "prisma": "^7.10.1",
+    "sass": "^1.105.2",
     "typescript": "^5"
+  },
+  "type": "module",
+  "allowScripts": {
+    "@parcel/watcher@2.6.0": true,
+    "@prisma/engines@7.10.1": true,
+    "prisma@7.10.1": true,
+    "unrs-resolver@1.12.2": true
   }
 }

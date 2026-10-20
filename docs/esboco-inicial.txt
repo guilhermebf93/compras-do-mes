@@ -1,0 +1,9 @@
+Projeto: Compras do mês
+
+Aplicação que monitora os insumos de uma casa e com isso gera uma lista de compras do mês. O usuário cadastra os produtos comprados de forma regular para o dia a dia de uma casa - como alimentos, produtos de limpeza, higiene, etc - e informa quando o produto acabou. Ou seja, se um pacote de sacos de lixo acaba em duas semanas, a aplicação entenderá que o usuário precisa de dois pacotes por mês e assim incluirá na lista de compra mensal.
+
+A aplicação visa facilitar o gerenciamento de insumos na casa do usuário, permitindo acompanhar o quanto que cada produto "dura", e não precisar se preocupar em fazer uma lista de compras do mês.
+
+Talvez não parte do MVP, futuramente integrar IA que possa sugerir algumas alterações que possam melhorar a compra do usuário, sugerindo alterações em determinados itens da lista, ou até sendo capaz de comparar preços em supermercados próximos.
+
+Aplicação em NextJs, com React, Typescript e SCSS, principalmente.
