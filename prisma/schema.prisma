@@ -1,0 +1,132 @@
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ProductCategory {
+  FOOD
+  CLEANING
+  PERSONAL_CARE
+  OTHER
+}
+
+enum BaseUnit {
+  UNIT
+  GRAM
+  MILLILITER
+}
+
+enum StockMovementType {
+  INITIAL_STOCK
+  CONSUMPTION
+  RESTOCK
+  ADJUSTMENT
+}
+
+enum ShoppingListStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+model User {
+  id         String   @id @default(uuid()) @db.Uuid
+  supabaseId String   @unique
+  email      String   @unique
+  name       String?
+  avatarUrl  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  products      Product[]
+  shoppingLists ShoppingList[]
+}
+
+model Product {
+  id          String          @id @default(uuid()) @db.Uuid
+  userId      String          @db.Uuid
+  name        String
+  category    ProductCategory @default(OTHER)
+  baseUnit    BaseUnit
+  packageQuantity Decimal     @db.Decimal(12, 3)
+  currentStock    Decimal     @default(0) @db.Decimal(12, 3)
+
+  // Estimativa inicial em unidades-base por mês.
+  estimatedMonthlyConsumption Decimal? @db.Decimal(12, 3)
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stockMovements StockMovement[]
+  shoppingItems  ShoppingListItem[]
+
+  @@index([userId, isActive])
+  @@index([userId, category])
+}
+
+model StockMovement {
+  id        String            @id @default(uuid()) @db.Uuid
+  productId String            @db.Uuid
+  type      StockMovementType
+  quantity  Decimal           @db.Decimal(12, 3)
+
+  // Início do intervalo observado para movimentações de consumo.
+  intervalStartAt DateTime?
+
+  occurredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([productId, occurredAt])
+  @@index([productId, type, occurredAt])
+}
+
+model ShoppingList {
+  id          String             @id @default(uuid()) @db.Uuid
+  userId      String             @db.Uuid
+  periodStart DateTime           @db.Date
+  periodEnd   DateTime           @db.Date
+  status      ShoppingListStatus @default(ACTIVE)
+  generatedAt DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  user  User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items ShoppingListItem[]
+
+  @@unique([userId, periodStart])
+  @@index([userId, status])
+}
+
+model ShoppingListItem {
+  id             String @id @default(uuid()) @db.Uuid
+  shoppingListId String @db.Uuid
+  productId      String @db.Uuid
+
+  // Necessidade projetada na unidade-base.
+  estimatedNeed Decimal @db.Decimal(12, 3)
+
+  // Estoque no momento da geração da lista.
+  stockAtGeneration Decimal @db.Decimal(12, 3)
+
+  // Quantidades expressas em embalagens inteiras.
+  suggestedPackageCount  Int
+  plannedPackageCount    Int
+  purchasedPackageCount  Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shoppingList ShoppingList @relation(fields: [shoppingListId], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([shoppingListId, productId])
+  @@index([productId])
+}
