@@ -1,0 +1,650 @@
+# Compras do Mês — Relatório de Progresso
+
+**Etapa:** Autenticação e infraestrutura de acesso  
+**Status:** Concluída  
+**Data de conclusão:** 20/11/2026
+
+---
+
+## 1. Resumo executivo
+
+Nesta etapa, foi implementada e testada a infraestrutura de autenticação do Compras do Mês, utilizando Supabase Auth com login pelo Google e integração com o Prisma.
+
+O trabalho contemplou:
+
+- Configuração do Google OAuth no Google Cloud e no Supabase.
+- Instalação e configuração dos clientes Supabase para navegador e servidor.
+- Implementação do Proxy para sincronização e renovação de sessões.
+- Implementação do callback OAuth.
+- Criação da página de login.
+- Associação entre usuários do Supabase Auth e o modelo `User` do Prisma.
+- Proteção de rotas para usuários autenticados.
+- Implementação do logout.
+- Correção de problemas de prerendering no Next.js.
+- Atualização de dependências e resolução das vulnerabilidades identificadas pelo npm audit.
+
+**Resultado:** o login com Google, a identificação do usuário interno, a proteção das rotas e o logout foram implementados e testados com sucesso.
+
+## 2. Tecnologias e versões utilizadas
+
+| Tecnologia | Versão / configuração |
+|---|---|
+| Next.js | 16.4.6 |
+| React | 19.3.0 |
+| Prisma | 7.10.1 |
+| @prisma/client | 7.10.1 |
+| @prisma/adapter-pg | 7.10.1 |
+| Supabase | Projeto hospedado existente |
+| @supabase/supabase-js | Instalado |
+| @supabase/ssr | Instalado |
+| PostgreSQL | Banco hospedado no Supabase |
+| TypeScript | 5.x |
+| Zod | 4.6.7 |
+
+O projeto utiliza Next.js App Router, TypeScript, Prisma ORM 7 e PostgreSQL.
+
+O Prisma Client é gerado em `src/generated/prisma`, utilizando o adapter PostgreSQL `PrismaPg`.
+
+## 3. Configuração do Supabase Auth
+
+O projeto Supabase já existente, utilizado para hospedar o banco PostgreSQL, também foi configurado para utilizar Supabase Auth.
+
+Não foi necessário criar outro projeto Supabase.
+
+### Google OAuth
+
+Foi criado um OAuth Client do tipo Web Application no Google Cloud.
+
+Também foi habilitado o provedor Google em:
+
+`Supabase → Authentication → Sign In / Providers → Google`
+
+Foram configuradas as credenciais OAuth:
+
+- Google Client ID.
+- Google Client Secret.
+
+A URL de callback do Supabase foi cadastrada nas credenciais do Google Cloud.
+
+### URLs de autenticação
+
+Durante a configuração inicial, foram definidos:
+
+- Site URL: `http://localhost:3000`
+- Redirect URL: `http://localhost:3000/auth/callback`
+
+Essas configurações atendem ao ambiente local de desenvolvimento. As URLs de produção ainda deverão ser configuradas quando houver publicação da aplicação.
+
+### Variáveis de ambiente
+
+Foram adicionadas ao `.env`:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL="https://seu-project-ref.supabase.co"
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="sb_publishable_..."
+```
+
+A Publishable Key é utilizada pelos clientes Supabase.
+
+Não utilizar a Service Role Key no navegador nem expor o Client Secret do Google em variáveis públicas.
+
+## 4. Clientes Supabase
+
+Foram criados dois clientes, cada um com uma responsabilidade específica.
+
+### 4.1. Cliente do navegador
+
+Arquivo:
+
+`src/lib/supabase/client.ts`
+
+Utiliza:
+
+```typescript
+import { createBrowserClient } from "@supabase/ssr";
+```
+
+Responsabilidades:
+
+- Comunicação com o Supabase a partir do navegador.
+- Início do login com Google.
+- Operações de autenticação iniciadas por Client Components.
+- Logout.
+
+O cliente é criado por meio de uma função `createClient()`.
+
+### 4.2. Cliente do servidor
+
+Arquivo:
+
+`src/lib/supabase/server.ts`
+
+Utiliza:
+
+```typescript
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+```
+
+Responsabilidades:
+
+- Comunicação autenticada com o Supabase no servidor.
+- Recuperação da sessão por meio dos cookies.
+- Utilização em Server Components, Server Actions e Route Handlers.
+
+A função `cookies()` é utilizada de forma assíncrona, conforme a API do Next.js 16.
+
+A implementação utiliza `getAll()` e `setAll()` para leitura e atualização dos cookies.
+
+### 4.3. Proxy
+
+Arquivo:
+
+`src/proxy.ts`
+
+Como o projeto utiliza Next.js 16, foi adotada a convenção `proxy.ts`, em vez do antigo `middleware.ts`.
+
+Responsabilidades:
+
+- Interceptar as requisições abrangidas pelo matcher.
+- Recuperar os cookies da sessão.
+- Sincronizar a atualização dos cookies.
+- Executar `supabase.auth.getClaims()` para permitir a verificação e renovação da sessão.
+
+O Proxy não é responsável pela autorização definitiva das operações protegidas. Essa verificação permanece no servidor, próxima às páginas e operações que acessam dados.
+
+## 5. Login com Google
+
+Foi implementado o fluxo OAuth utilizando:
+
+```typescript
+supabase.auth.signInWithOAuth({
+  provider: "google",
+  options: {
+    redirectTo: `${window.location.origin}/auth/callback`,
+  },
+});
+```
+
+A página de login foi estruturada com separação entre Server Component e Client Component.
+
+Estrutura:
+
+```text
+src/app/login/
+├── page.tsx
+└── components/
+    └── GoogleLoginButton.tsx
+```
+
+A página `page.tsx` permanece como Server Component.
+
+Somente o botão de login utiliza `"use client"`, pois necessita de interatividade no navegador.
+
+### Callback OAuth
+
+Arquivo:
+
+`src/app/auth/callback/route.ts`
+
+O Route Handler:
+
+1. Recebe o código de autorização enviado pelo Supabase.
+2. Recupera o parâmetro `code`.
+3. Utiliza `exchangeCodeForSession(code)` para trocar o código pela sessão.
+4. Redireciona o usuário para a página inicial `/` após o sucesso.
+5. Redireciona para `/login?error=auth` em caso de falha.
+
+O fluxo OAuth foi testado com sucesso.
+
+Os logs confirmaram:
+
+```text
+GET /login 200
+GET /auth/callback?code=... 307
+GET / 200
+```
+
+O status 307 correspondeu ao redirecionamento realizado pelo callback.
+
+O destino final `/` é provisório e deverá ser alterado para `/dashboard` quando essa rota for implementada.
+
+## 6. Associação Supabase Auth com Prisma User
+
+Esta foi uma das partes mais importantes da implementação.
+
+O modelo `User` já estava preparado no schema Prisma:
+
+```prisma
+model User {
+  id         String   @id @default(uuid()) @db.Uuid
+  supabaseId String   @unique
+  email      String   @unique
+  name       String?
+  avatarUrl  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  products      Product[]
+  shoppingLists ShoppingList[]
+}
+```
+
+A aplicação utiliza dois identificadores distintos:
+
+- `supabaseId`: identifica o usuário no Supabase Auth.
+- `id`: identificador interno utilizado nas relações do banco de dados da aplicação.
+
+### Função auxiliar
+
+Arquivo:
+
+`src/lib/auth/get-authenticated-user.ts`
+
+Foi criada a função:
+
+```typescript
+getAuthenticatedUser()
+```
+
+Responsabilidades:
+
+1. Criar o cliente Supabase do servidor.
+2. Recuperar e verificar a identidade por meio de `supabase.auth.getUser()`.
+3. Tratar a ausência de sessão retornando `null`.
+4. Validar a existência do e-mail.
+5. Recuperar nome e foto dos metadados do provedor.
+6. Buscar ou criar o usuário interno por meio do Prisma.
+7. Retornar o registro interno `User`.
+
+A associação é realizada por:
+
+```typescript
+const user = await prisma.user.upsert({
+  where: {
+    supabaseId: supabaseUser.id,
+  },
+  update: {
+    email: supabaseUser.email,
+  },
+  create: {
+    supabaseId: supabaseUser.id,
+    email: supabaseUser.email,
+    name,
+    avatarUrl,
+  },
+});
+```
+
+O `upsert` permite criar o registro no primeiro acesso e recuperar o mesmo registro nos acessos seguintes.
+
+A implementação atual atualiza o e-mail nos acessos posteriores, preservando o nome e a foto já armazenados internamente.
+
+### Contrato da função
+
+- Usuário autenticado e associado: retorna o `User` interno.
+- Ausência de sessão: retorna `null`.
+- Falha real na verificação ou ausência de e-mail obrigatório: lança erro.
+
+Essa função será reutilizada nas operações protegidas da aplicação.
+
+**Regra de segurança:** nunca aceitar `userId` enviado pelo cliente como fonte de identificação. O `userId` das operações deverá vir do usuário recuperado no servidor.
+
+## 7. Proteção de rotas
+
+Foi adotada a utilização de Route Groups do Next.js.
+
+A estrutura atual da área protegida utiliza:
+
+```text
+src/app/
+├── (protected)/
+│   ├── layout.tsx
+│   ├── page.tsx
+│   └── test-auth/
+│       └── page.tsx
+├── auth/
+│   └── callback/
+│       └── route.ts
+└── login/
+    ├── page.tsx
+    └── components/
+        └── GoogleLoginButton.tsx
+```
+
+O grupo `(protected)` não aparece nas URLs.
+
+Exemplos:
+
+- `app/(protected)/page.tsx` corresponde a `/`.
+- `app/(protected)/test-auth/page.tsx` corresponde a `/test-auth`.
+
+### Layout de proteção
+
+Arquivo:
+
+`src/app/(protected)/layout.tsx`
+
+O layout verifica a autenticação antes de permitir o acesso ao conteúdo protegido.
+
+Utiliza:
+
+- `Suspense` para exibir um estado de carregamento.
+- `connection()` para executar a verificação no contexto de uma requisição real.
+- `getAuthenticatedUser()` para identificar o usuário.
+- `redirect("/login")` quando não existe usuário autenticado.
+
+A chamada assíncrona deve utilizar `await`:
+
+```typescript
+const user = await getAuthenticatedUser();
+```
+
+Durante os testes, foi identificado que a ausência desse `await` fazia a variável receber uma Promise, que é considerada verdadeira em uma condição. A correção resolveu o problema.
+
+### Resultado dos testes
+
+- Usuário autenticado acessa a área protegida normalmente.
+- Visitante não autenticado é redirecionado para `/login`.
+- A página `/login` permanece pública.
+- O comportamento foi testado em janela privativa do Firefox.
+
+### Limite da proteção
+
+O layout é uma barreira de navegação, não substitui a autorização das operações.
+
+Server Actions, consultas e alterações no Prisma deverão verificar o usuário autenticado e aplicar filtros de propriedade.
+
+Exemplo futuro:
+
+```typescript
+const user = await getAuthenticatedUser();
+
+if (!user) {
+  throw new Error("Não autenticado.");
+}
+
+const product = await prisma.product.findFirst({
+  where: {
+    id: productId,
+    userId: user.id,
+  },
+});
+```
+
+## 8. Logout
+
+Foi implementado um componente independente:
+
+`src/components/logout-button.tsx`
+
+O componente é Client Component e utiliza:
+
+```typescript
+supabase.auth.signOut({
+  scope: "local",
+});
+```
+
+O escopo `local` encerra a sessão do navegador atual, sem solicitar o encerramento das sessões de outros dispositivos.
+
+Após o logout:
+
+```typescript
+router.replace("/login");
+router.refresh();
+```
+
+O botão também possui estado de carregamento e tratamento de erro.
+
+A página de teste de autenticação foi utilizada temporariamente para exibir o botão.
+
+O logout foi testado com sucesso, incluindo a tentativa posterior de acessar uma rota protegida.
+
+### Padrão de exportação
+
+Foi adotada a preferência por named exports.
+
+Exemplo:
+
+```typescript
+export function LogoutButton() {
+  // ...
+}
+```
+
+Importação:
+
+```typescript
+import { LogoutButton } from "@/components/logout-button";
+```
+
+Manter named exports como padrão nos próximos componentes, salvo necessidade específica.
+
+## 9. Cache Components, Suspense e prerendering
+
+O projeto utiliza:
+
+- Cache Components habilitado.
+- Partial Prefetching habilitado.
+
+Durante os testes, uma página que recuperava informações autenticadas apresentou erro relacionado a `Date.now()` durante o prerendering.
+
+A solução foi utilizar `connection()` dentro de um componente assíncrono envolvido por `Suspense`.
+
+Exemplo de estrutura:
+
+```tsx
+export default function TesteAuthPage() {
+  return (
+    <Suspense fallback={<p>Carregando...</p>}>
+      <TesteAuthContent />
+    </Suspense>
+  );
+}
+
+async function TesteAuthContent() {
+  await connection();
+
+  // Recuperação dos dados dinâmicos.
+}
+```
+
+O mesmo padrão foi adotado no layout de proteção.
+
+A solução funcionou e foi validada no build de produção.
+
+**Decisão de projeto:** utilizar Suspense nos pontos em que houver carregamento assíncrono de dados, oferecendo estados de carregamento adequados à interface.
+
+## 10. Atualizações de segurança e dependências
+
+Durante o desenvolvimento, o Next.js apresentou um alerta de vulnerabilidade na versão 16.4.1.
+
+Foi realizada a atualização para:
+
+- `next@16.4.6`
+- `eslint-config-next@16.4.6`
+
+As versões ficaram alinhadas.
+
+Posteriormente, o `npm audit` identificou 10 vulnerabilidades:
+
+- 3 altas.
+- 7 moderadas.
+
+As ocorrências altas estavam relacionadas à dependência transitiva `effect`, trazida por:
+
+```text
+prisma@7.10.1
+└── @prisma/config@7.10.1
+    └── effect@3.20.0
+```
+
+A correção automática do npm sugeria um downgrade incompatível para Prisma 6.12.0.
+
+Essa alternativa foi descartada para preservar a arquitetura existente com Prisma 7.
+
+### Correção aplicada
+
+Foi utilizado o recurso `overrides` do npm:
+
+```json
+"overrides": {
+  "effect": "3.22.1"
+}
+```
+
+Comandos executados:
+
+```bash
+npm pkg set 'overrides.effect=3.22.1'
+npm install
+```
+
+A árvore final confirmou:
+
+```text
+prisma@7.10.1
+└── @prisma/config@7.10.1
+    └── effect@3.22.1 overridden
+```
+
+### Validação final
+
+Foram executados:
+
+```bash
+npx prisma generate --config prisma7.config.ts
+npm run build
+npm audit
+```
+
+Resultados:
+
+- Prisma Client gerado corretamente.
+- Build de produção concluído.
+- Compilação TypeScript aprovada.
+- Páginas geradas corretamente.
+- Zero vulnerabilidades no npm audit.
+
+O `package.json` e o `package-lock.json` devem ser mantidos versionados para preservar essa resolução de dependências.
+
+O override deverá ser reavaliado quando houver atualização futura do Prisma que incorpore a dependência corrigida diretamente.
+
+## 11. Arquitetura futura de rotas
+
+Durante a implementação da autenticação, foi definida uma decisão de arquitetura para a experiência pública e privada.
+
+A página inicial `/` deverá ser uma Landing Page pública, destinada a apresentar o Compras do Mês para novos usuários.
+
+O Dashboard deverá ser uma rota separada, protegida e destinada aos usuários autenticados.
+
+Estrutura futura desejada:
+
+```text
+src/app/
+├── (public)/
+│   ├── page.tsx
+│   └── login/
+│       └── page.tsx
+├── (protected)/
+│   ├── layout.tsx
+│   ├── dashboard/
+│   │   └── page.tsx
+│   ├── produtos/
+│   └── listas/
+└── auth/
+    └── callback/
+        └── route.ts
+```
+
+Os nomes dos Route Groups são organizacionais e não aparecem nas URLs.
+
+### Comportamento desejado
+
+| Situação | Comportamento |
+|---|---|
+| Visitante acessa `/` | Exibe Landing Page. |
+| Visitante acessa `/login` | Exibe login. |
+| Visitante acessa `/dashboard` | Redireciona para `/login`. |
+| Usuário autenticado acessa `/` | Redireciona para `/dashboard`. |
+| Usuário autenticado acessa `/login` | Redireciona para `/dashboard`. |
+| Login concluído | Redireciona para `/dashboard`. |
+
+Essa arquitetura foi definida, mas ainda não implementada.
+
+Atualmente, o callback OAuth redireciona para `/`, e a página inicial ainda é a página provisória do projeto.
+
+## 12. Estado atual do projeto
+
+### Concluído
+
+- [x] Projeto Supabase configurado para autenticação.
+- [x] Google OAuth habilitado.
+- [x] Dependências Supabase instaladas.
+- [x] Cliente Supabase do navegador.
+- [x] Cliente Supabase do servidor.
+- [x] Proxy de sincronização da sessão.
+- [x] Callback OAuth.
+- [x] Login com Google.
+- [x] Associação entre Supabase Auth e Prisma User.
+- [x] Função auxiliar `getAuthenticatedUser()`.
+- [x] Proteção das rotas do grupo `(protected)`.
+- [x] Redirecionamento de visitantes não autenticados.
+- [x] Logout com escopo local.
+- [x] Testes de autenticação concluídos.
+- [x] Correção do prerendering com Suspense e connection().
+- [x] Atualização do Next.js.
+- [x] Resolução das vulnerabilidades do npm.
+- [x] Build de produção aprovado.
+
+### Pendente
+
+- [ ] Criar a Landing Page pública.
+- [ ] Criar o Dashboard em `/dashboard`.
+- [ ] Implementar redirecionamentos conforme o estado de autenticação.
+- [ ] Alterar o callback OAuth para direcionar ao Dashboard.
+- [ ] Remover a página temporária de teste de autenticação.
+- [ ] Configurar URLs de produção no Supabase e no Google Cloud.
+- [ ] Implementar tratamento visual de erros de login e logout.
+- [ ] Desenvolver os elementos definitivos de navegação e cabeçalho.
+
+## 13. Próxima etapa de desenvolvimento
+
+Após o encerramento da infraestrutura de autenticação, o projeto poderá avançar para a etapa **2.2 — Cadastro e gerenciamento de produtos**.
+
+Antes ou durante essa evolução, será necessário implementar a estrutura visual pública e o Dashboard.
+
+A etapa 2.2 deverá contemplar:
+
+1. Criar produto.
+2. Consultar produtos do usuário.
+3. Consultar detalhes de um produto.
+4. Editar informações.
+5. Arquivar produto.
+6. Garantir que um usuário nunca manipule produtos pertencentes a outra conta.
+
+A autenticação já fornece a base necessária para essa segurança.
+
+**Importante:** o registro de estoque inicial e a criação da movimentação `INITIAL_STOCK` permanecem reservados para a etapa 2.3, conforme o planejamento original. Não devem ser incorporados prematuramente ao cadastro de produtos da etapa 2.2.
+
+---
+
+## 14. Decisões e padrões técnicos consolidados
+
+Para manter a consistência nas próximas etapas:
+
+- Utilizar named exports como preferência.
+- Manter Server Components como padrão.
+- Utilizar Client Components apenas quando houver necessidade de interatividade no navegador.
+- Utilizar `Suspense` para carregamentos assíncronos de dados.
+- Utilizar `connection()` quando uma parte da renderização depender de dados da requisição.
+- Utilizar o cliente Supabase de servidor para operações que exigem identidade autenticada.
+- Utilizar `getAuthenticatedUser()` para recuperar o usuário interno.
+- Nunca confiar em `userId` enviado pelo cliente.
+- Aplicar filtros de propriedade nas consultas e alterações do Prisma.
+- Manter a separação entre Supabase Auth (identidade e sessão) e Prisma (dados da aplicação).
+- Preservar a arquitetura Prisma 7 com `PrismaPg`.
+- Não misturar o registro inicial de estoque com a etapa 2.2.
+
+**Conclusão:** a infraestrutura de autenticação do Compras do Mês está implementada e validada. O projeto possui agora uma base funcional para evoluir para a construção das interfaces e funcionalidades de gerenciamento de produtos, mantendo a separação entre identidade, autorização e persistência dos dados.
