@@ -12,7 +12,9 @@ export default function ProtectedLayout({
   children
 }: ProtectedLayoutProps) {
   return(
-    <Suspense fallback={<p>Verificando autenticação...</p>}>
+    <Suspense fallback={
+      <div className='page-loading'>Verificando autenticação...</div>
+    }>
       <ProtectedContent>
         {children}
       </ProtectedContent>

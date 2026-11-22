@@ -1,0 +1,557 @@
+# Compras do Mês — Relatório de Progresso
+
+**Etapa:** 2.2 — Cadastro e gerenciamento de produtos  
+**Status:** Concluída  
+**Data de conclusão:** 21/11/2026
+
+---
+
+## 1. Resumo executivo
+
+Nesta etapa, foi implementado o gerenciamento completo dos produtos do usuário, incluindo cadastro, consulta, edição, arquivamento e reativação.
+
+Também foi desenvolvida e validada a proteção de propriedade dos registros, garantindo que cada usuário possa manipular exclusivamente seus próprios produtos.
+
+O trabalho contemplou:
+
+- Implementação das validações com Zod.
+- Conversão entre unidades de embalagem e unidades-base.
+- Cadastro de produtos com estoque inicial zerado.
+- Listagem com filtros, busca e ordenação.
+- Página de detalhes do produto.
+- Edição das informações cadastrais.
+- Arquivamento e reativação de produtos.
+- Proteção das operações por usuário autenticado.
+- Testes de isolamento entre duas contas diferentes.
+- Ajustes de carregamento e prerendering no Next.js.
+- Melhorias de acessibilidade e interação na listagem.
+
+**Resultado:** todas as funcionalidades previstas para a etapa 2.2 foram implementadas e testadas. A segurança das operações foi validada inclusive por meio de tentativas de manipulação cruzada entre contas.
+
+## 2. Tecnologias utilizadas
+
+A etapa manteve a arquitetura estabelecida anteriormente:
+
+| Tecnologia | Versão / configuração |
+|---|---|
+| Next.js | 16.4.6 |
+| React | 19.3.0 |
+| Prisma | 7.10.1 |
+| @prisma/client | 7.10.1 |
+| @prisma/adapter-pg | 7.10.1 |
+| PostgreSQL | Supabase |
+| Supabase Auth | Google OAuth |
+| TypeScript | 5.x |
+| Zod | 4.6.7 |
+| SCSS | CSS Modules e estilos globais |
+
+A aplicação utiliza Next.js App Router, Server Components como padrão e Server Actions para operações de escrita.
+
+O Prisma Client permanece gerado em `src/generated/prisma`, utilizando o adapter PostgreSQL `PrismaPg`.
+
+## 3. Estrutura de dados e regras de negócio
+
+A implementação utilizou o modelo `Product` definido anteriormente no schema Prisma.
+
+Principais campos utilizados:
+
+- `id`: identificador UUID.
+- `userId`: proprietário do produto.
+- `name`: nome do produto.
+- `category`: categoria.
+- `baseUnit`: unidade-base.
+- `packageQuantity`: quantidade por embalagem, armazenada na unidade-base.
+- `currentStock`: estoque atual.
+- `estimatedMonthlyConsumption`: consumo mensal estimado, opcional.
+- `lastStockCountAt`: data da última conferência do estoque.
+- `isActive`: situação do produto.
+- `createdAt` e `updatedAt`: datas de registro e atualização.
+
+### Categorias
+
+Foram utilizadas quatro categorias:
+
+- `FOOD`
+- `CLEANING`
+- `PERSONAL_CARE`
+- `OTHER`
+
+### Unidades
+
+Unidades-base:
+
+- `UNIT`
+- `GRAM`
+- `MILLILITER`
+
+Unidades de embalagem:
+
+- `UNIT`
+- `GRAM`
+- `KILOGRAM`
+- `MILLILITER`
+- `LITER`
+
+### Regras implementadas
+
+- O usuário pode cadastrar produtos livremente.
+- O nome e a categoria são informados no cadastro.
+- A quantidade da embalagem deve ser positiva.
+- A estimativa mensal de consumo é opcional e, quando informada, deve ser positiva.
+- O estoque começa em zero.
+- Produtos arquivados não são excluídos do banco.
+- Produtos arquivados preservam seus dados e histórico.
+- A edição cadastral não permite alterar estoque ou movimentações.
+
+**Decisão importante:** o estoque inicial e a movimentação `INITIAL_STOCK` continuam reservados para a etapa 2.3.
+
+## 4. Conversão de unidades
+
+Foi criado o arquivo:
+
+`src/lib/units.ts`
+
+Responsável por centralizar a configuração das unidades e as conversões para unidades-base.
+
+Conversões implementadas:
+
+| Unidade de embalagem | Unidade-base | Fator |
+|---|---|---:|
+| UNIT | UNIT | 1 |
+| GRAM | GRAM | 1 |
+| KILOGRAM | GRAM | 1.000 |
+| MILLILITER | MILLILITER | 1 |
+| LITER | MILLILITER | 1.000 |
+
+Foram implementadas as funções:
+
+- `getBaseUnit()`
+- `getConversionFactor()`
+- `convertToBaseUnit()`
+
+Os valores são convertidos utilizando `Prisma.Decimal`, evitando depender de operações com ponto flutuante para armazenar quantidades no banco.
+
+Na edição, os valores armazenados na unidade-base são convertidos novamente para a unidade de embalagem apresentada no formulário.
+
+## 5. Validação dos dados
+
+Foi criado:
+
+`src/lib/validations/product.schema.ts`
+
+Utilizando Zod 4.
+
+O schema valida:
+
+- Nome com tamanho permitido.
+- Categoria válida.
+- Quantidade da embalagem positiva.
+- Unidade de embalagem válida.
+- Consumo mensal estimado positivo, quando informado.
+- Formato dos números decimais.
+- Limites compatíveis com `Decimal(12,3)` após conversão para unidade-base.
+
+Também foi implementado tratamento para entrada de números com vírgula ou ponto decimal.
+
+Os schemas `createProductSchema` e `updateProductSchema` são utilizados pelas operações correspondentes.
+
+## 6. Organização dos arquivos
+
+A implementação ficou organizada da seguinte forma:
+
+```text
+src/
+├── app/
+│   └── (protected)/
+│       └── produtos/
+│           ├── page.tsx
+│           ├── page.module.scss
+│           ├── novo/
+│           │   └── page.tsx
+│           └── [id]/
+│               ├── page.tsx
+│               ├── page.module.scss
+│               └── editar/
+│                   └── page.tsx
+│
+├── components/
+│   ├── back-link.tsx
+│   ├── back-link.module.scss
+│   ├── form-submit-button.tsx
+│   └── products/
+│       ├── product-form.tsx
+│       ├── product-list.tsx
+│       ├── product-list.module.scss
+│       └── product-date.tsx
+│
+└── lib/
+    ├── auth/
+    │   └── get-authenticated-user.ts
+    ├── products/
+    │   ├── actions.ts
+    │   └── queries.ts
+    ├── validations/
+    │   ├── product.schema.ts
+    │   └── stock.schema.ts
+    ├── product-constants.ts
+    ├── units.ts
+    └── prisma.ts
+```
+
+## 7. Cadastro de produtos
+
+Página:
+
+`/produtos/novo`
+
+Componente:
+
+`src/components/products/product-form.tsx`
+
+Foi desenvolvido um formulário reutilizável para criação e edição de produtos.
+
+O formulário utiliza:
+
+- React `useActionState`.
+- Server Actions.
+- Validação no servidor com Zod.
+- Mensagens de erro por campo.
+- Estados de carregamento.
+- Valores iniciais configuráveis.
+
+A criação é realizada pela função `createProduct`, em:
+
+`src/lib/products/actions.ts`
+
+### Comportamento
+
+1. Recupera o usuário autenticado.
+2. Valida os dados recebidos.
+3. Converte a quantidade da embalagem para unidade-base.
+4. Determina a unidade-base correspondente.
+5. Cria o produto associado ao usuário interno.
+6. Define o estoque inicial como zero.
+7. Armazena a estimativa mensal convertida, quando informada.
+8. Atualiza o cache das páginas afetadas.
+9. Redireciona para a listagem.
+
+O `userId` é obtido exclusivamente no servidor.
+
+## 8. Listagem de produtos
+
+Página:
+
+`/produtos`
+
+Arquivos:
+
+- `src/app/(protected)/produtos/page.tsx`
+- `src/components/products/product-list.tsx`
+- `src/components/products/product-list.module.scss`
+
+Foi implementada uma listagem com:
+
+- Busca por nome.
+- Filtro por categoria.
+- Filtro por situação.
+- Ordenação.
+- Exibição de informações da embalagem.
+- Exibição do estoque atual.
+- Identificação de produtos ativos e arquivados.
+
+Os filtros são executados no frontend, utilizando os dados já carregados, sem realizar uma consulta ao servidor a cada tecla digitada.
+
+Os produtos são apresentados em cards clicáveis que direcionam para a página de detalhes.
+
+### Melhorias de interação e acessibilidade
+
+Os cards receberam:
+
+- Área de clique integral.
+- Efeito discreto de elevação no hover.
+- Destaque de borda.
+- Indicador de foco por teclado com `:focus-visible`.
+- Respeito à preferência `prefers-reduced-motion`.
+
+A implementação preserva a identidade visual minimalista da aplicação.
+
+## 9. Detalhes do produto
+
+Página:
+
+`/produtos/[id]`
+
+Arquivo:
+
+`src/app/(protected)/produtos/[id]/page.tsx`
+
+A página apresenta:
+
+- Nome e categoria.
+- Situação do produto.
+- Informações da embalagem.
+- Unidade-base.
+- Consumo mensal estimado.
+- Estoque atual.
+- Data da última conferência.
+- Data de cadastro.
+- Data da última atualização.
+
+Também disponibiliza as operações correspondentes à situação do produto:
+
+**Produto ativo:**
+- Editar.
+- Arquivar.
+
+**Produto arquivado:**
+- Reativar.
+
+Foi criado o componente reutilizável `BackLink` para navegação de retorno.
+
+## 10. Edição de produtos
+
+Página:
+
+`/produtos/[id]/editar`
+
+A edição reutiliza o componente `ProductForm`, preenchendo os campos com os valores atuais do produto.
+
+A operação é realizada pela Server Action:
+
+`updateProduct(productId, prevState, formData)`
+
+### Regras implementadas
+
+- Somente produtos pertencentes ao usuário autenticado podem ser editados.
+- Produtos arquivados não podem ser editados.
+- O ID recebido é validado.
+- Os dados enviados são validados com Zod.
+- As quantidades são convertidas para unidade-base.
+- O estoque atual não pode ser alterado pelo formulário.
+- A data da última conferência não pode ser alterada.
+- As movimentações de estoque não são modificadas.
+
+A atualização utiliza `updateMany` com filtros simultâneos de identificação, propriedade e situação do produto.
+
+Quando nenhum registro corresponde aos critérios, a operação retorna uma mensagem genérica de produto não encontrado.
+
+## 11. Arquivamento e reativação
+
+Foram implementadas duas Server Actions:
+
+- `archiveProduct(productId)`
+- `reactivateProduct(productId)`
+
+Ambas utilizam autenticação no servidor e filtros de propriedade.
+
+### Arquivamento
+
+Atualiza exclusivamente:
+
+```typescript
+isActive: false
+```
+
+A operação não exclui o registro nem modifica seu estoque ou histórico.
+
+### Reativação
+
+Atualiza exclusivamente:
+
+```typescript
+isActive: true
+```
+
+Somente produtos arquivados pertencentes ao usuário autenticado podem ser reativados.
+
+### Estados de carregamento
+
+Foi criado o componente:
+
+`src/components/form-submit-button.tsx`
+
+Utilizando `useFormStatus`, ele permite apresentar estados de carregamento e desabilitar o botão durante o envio.
+
+Exemplos:
+
+- `Arquivando...`
+- `Reativando...`
+
+O comportamento foi testado nas duas operações.
+
+A confirmação por modal ainda não foi implementada e permanece como melhoria futura.
+
+## 12. Segurança e isolamento entre usuários
+
+Esta foi uma das partes mais importantes da etapa.
+
+A proteção não depende exclusivamente do layout `(protected)`.
+
+Cada operação que acessa ou modifica dados utiliza `getAuthenticatedUser()` para recuperar o usuário interno no servidor.
+
+### Consultas
+
+As consultas filtram os registros por:
+
+```typescript
+where: {
+  userId: user.id,
+}
+```
+
+A consulta individual utiliza também o identificador do produto.
+
+Quando o produto não pertence ao usuário autenticado, a consulta retorna `null`, permitindo apresentar uma resposta de não encontrado.
+
+### Atualizações
+
+As operações de atualização utilizam filtros combinados:
+
+```typescript
+where: {
+  id: productId,
+  userId: user.id,
+  isActive: true,
+}
+```
+
+O mesmo princípio é aplicado ao arquivamento e à reativação, respeitando a situação esperada do produto.
+
+**Regra consolidada:** nunca confiar em `userId` enviado pelo cliente. A identidade e a propriedade dos registros devem ser determinadas no servidor.
+
+### Testes realizados
+
+Foram utilizadas duas contas diferentes, denominadas A e B.
+
+| Teste | Resultado |
+|---|---|
+| Conta B não visualiza produtos da conta A na listagem | Aprovado |
+| Conta B tenta acessar detalhes de produto da conta A | Aprovado |
+| Conta B tenta acessar a edição de produto da conta A | Aprovado |
+| Conta A não visualiza produtos exclusivos da conta B | Aprovado |
+| Conta A tenta acessar detalhes de produto da conta B | Aprovado |
+| Conta A tenta acessar a edição de produto da conta B | Aprovado |
+| Conta B tenta atualizar produto da conta A diretamente pela Server Action | Aprovado |
+| Conta B tenta arquivar produto da conta A | Aprovado |
+| Conta B tenta reativar produto arquivado da conta A | Aprovado |
+
+### Validação direta das Server Actions
+
+Para testar a autorização além das interfaces, foi criada temporariamente uma página de teste que executava as próprias Server Actions com o UUID de um produto pertencente à outra conta.
+
+O teste de atualização retornou:
+
+`Produto não encontrado`
+
+O teste de arquivamento redirecionou para `/produtos`, sem alterar a situação do produto.
+
+O teste de reativação também redirecionou para `/produtos`, mantendo o produto arquivado.
+
+Em todos os casos, os dados da conta A permaneceram intactos.
+
+**Resultado:** o isolamento entre contas foi validado tanto nas consultas quanto nas operações de escrita.
+
+## 13. Suspense, connection() e carregamento dinâmico
+
+O projeto utiliza Cache Components e Partial Prefetching.
+
+Durante o desenvolvimento, foi necessário corrigir avisos relacionados ao uso de `Date.now()` durante o prerendering.
+
+O padrão adotado consiste em:
+
+- Manter a página como componente síncrono.
+- Envolver o conteúdo assíncrono com `Suspense`.
+- Executar `await connection()` dentro do componente assíncrono.
+- Realizar as consultas somente após a conexão com a requisição.
+
+Esse padrão foi aplicado nas páginas:
+
+- `/produtos`
+- `/produtos/[id]`
+- `/produtos/[id]/editar`
+
+Os estados de carregamento utilizam a classe global `.page-loading`.
+
+A solução eliminou os avisos identificados sem desativar os recursos do Next.js.
+
+## 14. Validação técnica final
+
+Após a implementação e os testes de segurança, foram executados:
+
+```bash
+npx tsc --noEmit
+npm run lint
+```
+
+Resultados:
+
+- TypeScript aprovado.
+- ESLint aprovado.
+- Nenhum erro reportado.
+- Páginas temporárias de teste removidas.
+- Página temporária `test-auth` também removida.
+
+A validação de build de produção deverá continuar fazendo parte das verificações gerais do projeto.
+
+## 15. Estado atual da etapa
+
+### Concluído
+
+- [x] Cadastro de produtos.
+- [x] Validação dos dados com Zod.
+- [x] Conversão entre unidades.
+- [x] Listagem de produtos.
+- [x] Busca e filtros.
+- [x] Ordenação.
+- [x] Detalhes do produto.
+- [x] Edição de informações.
+- [x] Arquivamento.
+- [x] Reativação.
+- [x] Isolamento de dados entre usuários.
+- [x] Validação de propriedade nas consultas.
+- [x] Validação de propriedade nas Server Actions.
+- [x] Testes com duas contas diferentes.
+- [x] Testes de tentativas de acesso cruzado.
+- [x] TypeScript aprovado.
+- [x] ESLint aprovado.
+- [x] Remoção das páginas temporárias de teste.
+
+### Pendências registradas para depois
+
+- [ ] Criar modal genérico e reutilizável de confirmação, com acessibilidade, mensagens configuráveis, ações e estado de carregamento.
+- [ ] Integrar o modal às operações de arquivamento e reativação.
+- [ ] Melhorar visualmente a página de login, mantendo a identidade do projeto.
+- [ ] Melhorar a apresentação do login com Google.
+- [ ] Implementar estados visuais de carregamento e erro no login.
+
+Essas melhorias não impedem a conclusão da etapa 2.2.
+
+## 16. Próxima etapa de desenvolvimento
+
+A próxima subetapa será:
+
+**Etapa 2.3 — Registro de estoque inicial**
+
+Conforme o planejamento original, deverá contemplar:
+
+1. Receber a quantidade inicial de estoque no cadastro do produto.
+2. Criar o produto.
+3. Registrar uma movimentação `INITIAL_STOCK` quando houver estoque positivo.
+4. Atualizar `currentStock`.
+5. Executar as operações dentro de uma transação Prisma.
+
+A implementação deverá garantir que a criação do produto, o registro da movimentação e a atualização do estoque sejam consistentes.
+
+Também será necessário revisar o fluxo de cadastro atual para incorporar o estoque inicial sem comprometer as validações e regras já implementadas.
+
+---
+
+## Conclusão
+
+A etapa 2.2 — Cadastro e gerenciamento de produtos está concluída.
+
+O Compras do Mês agora possui uma estrutura funcional para cadastrar, consultar, editar, arquivar e reativar produtos, com validações de dados, conversão de unidades e isolamento entre usuários.
+
+A implementação preserva a arquitetura definida anteriormente e mantém o controle de estoque separado das operações cadastrais.
+
+**O projeto está pronto para avançar para a etapa 2.3 — Registro de estoque inicial.**
