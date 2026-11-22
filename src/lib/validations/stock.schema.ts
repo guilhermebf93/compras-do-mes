@@ -15,6 +15,10 @@ export const restockSchema = z.object({
     .trim()
     .regex(/^[1-9]\d*$/, 'Informe uma quantidade inteira maior que zero.')
     .transform(Number)
+    .refine(
+      Number.isSafeInteger,
+      'Informe uma quantidade válida de embalagens.'
+    )
 })
 
 export const consumptionSchema = z.object({

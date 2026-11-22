@@ -1,9 +1,11 @@
 
 import { z } from 'zod'
-import { packageUnits } from '../units'
-import { productCategories } from '../product-constants'
 
-import { getConversionFactor } from '../units'
+import { productCategories } from '../product-constants'
+import {
+  getConversionFactor,
+  packageUnits
+} from '../units'
 
 const decimalInput = z
   .string()
@@ -18,6 +20,12 @@ const positiveDecimal = decimalInput.refine(
   (value) => Number(value) > 0,
   'O valor deve ser maior que zero.',
 )
+
+const nonNegativeDecimal = decimalInput.refine(
+  (value) => Number(value) >= 0,
+  'O valor não pode ser negativo'
+)
+
 const productFieldsSchema = z.object({
   name: z
     .string()
@@ -39,11 +47,21 @@ const productFieldsSchema = z.object({
     (value) => (value === '' || value === null ? undefined : value),
     positiveDecimal.optional(),
   ),
-}).superRefine((data, ctx) => {
+})
+
+const validateProductQuantities = (
+  data: {
+    packageUnit: (typeof packageUnits)[number],
+    packageQuantity: string,
+    estimatedMonthlyConsumption?: string,
+    initialStock?: string
+  },
+  ctx: z.RefinementCtx,
+) => {
   const conversionFactor = getConversionFactor(data.packageUnit)
   const maxValue = 999999999.999
-
-  const packageQuantityInBaseUnit = 
+  
+  const packageQuantityInBaseUnit =
     Number(data.packageQuantity) * conversionFactor
 
   if (packageQuantityInBaseUnit > maxValue) {
@@ -66,10 +84,28 @@ const productFieldsSchema = z.object({
       })
     }
   }
-})
+
+  if (data.initialStock !== undefined) {
+    const initialStockInBaseUnit =
+      Number(data.initialStock) * conversionFactor
+
+    if (initialStockInBaseUnit > maxValue) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['initialStock'],
+        message: 'O estoque inicial convertido ultrapassa o limite permitido.',
+      })
+    }
+  }
+}
 
 export const createProductSchema = productFieldsSchema
-export const updateProductSchema = productFieldsSchema
+  .extend({
+    initialStock: nonNegativeDecimal
+  })
+  .superRefine(validateProductQuantities)
+
+export const updateProductSchema = productFieldsSchema.superRefine(validateProductQuantities)
 
 export type CreateProductInput = z.infer<typeof createProductSchema>
 export type UpdateProductInput = z.infer<typeof updateProductSchema>

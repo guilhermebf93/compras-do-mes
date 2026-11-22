@@ -13,7 +13,7 @@ export default function NewProductPage() {
         </header>
 
         <section className='surface' aria-label='Cadastro de produto'>
-          <ProductForm action={createProduct} />
+          <ProductForm action={createProduct} showInitialStock />
         </section>
       </div>
     </main>

@@ -20,6 +20,7 @@ type ProductFormProps = {
     packageUnit?: PackageUnit
     estimatedMonthlyConsumption?: string
   }
+  showInitialStock?: boolean
   submitLabel?: string
   pendingLabel?: string
 }
@@ -29,6 +30,7 @@ const initialState: ProductActionState = {}
 export function ProductForm({
   action,
   initialValues,
+  showInitialStock = false,
   submitLabel = 'Cadastrar produto',
   pendingLabel = 'Cadastrando...'
 }: ProductFormProps) {
@@ -153,6 +155,38 @@ export function ProductForm({
             </span>
           )}
         </div>
+
+        {showInitialStock && (
+          <div className='form-field'>
+            <label
+              className='field-label'
+              htmlFor='initialStock'
+            >
+              Estoque Inicial
+            </label>
+
+            <input
+              id='initialStock'
+              name='initialStock'
+              type='text'
+              inputMode='decimal'
+              placeholder='Ex: 2,5'
+              required
+              defaultValue='0'
+              aria-invalid={Boolean(state.errors?.initialStock)}
+            />
+
+            <span className='field-hint'>
+              Informe quanto você tem disponível atualmente, utilizando a mesma unidade da embalagem
+            </span>
+
+            {state.errors?.initialStock && (
+              <span className='field-error'>
+                {state.errors.initialStock[0]}
+              </span>
+            )}
+          </div>
+        )}
 
         <div className='form-field'>
           <label

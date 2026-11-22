@@ -7,6 +7,7 @@ import { getUserProductById } from '@/lib/products/queries'
 import { ProductDate } from '@/components/products/product-date'
 import { BackLink } from '@/components/back-link'
 import { FormSubmitButton } from '@/components/form-submit-button'
+import { RestockForm } from '@/components/products/restock-form'
 import {
   archiveProduct,
   reactivateProduct
@@ -199,6 +200,23 @@ async function ProductDetailsContent({
             <p className={styles.stockHint}>
               Última conferência: {<ProductDate date={product.lastStockCountAt} />}
             </p>
+
+            {product.isActive && (
+              <div className={styles.restock}>
+                <h3>Registrar reposição</h3>
+
+                <p>
+                  Informe quantas embalagens você comprou para atualizar o seu estoque
+                </p>
+
+                <RestockForm
+                  productId={product.id}
+                  packageQuantity={product.packageQuantity}
+                  currentStock={product.currentStock}
+                  baseUnitLabel={baseUnitLabels[product.baseUnit]}
+                />
+              </div>
+            )}
           </section>
 
           <section className={`surface ${styles.section}`}>
